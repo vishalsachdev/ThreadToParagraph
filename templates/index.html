@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Convert Twitter/X Thread to Text</h5>
+                <div class="mb-3">
+                    <label for="threadUrl" class="form-label">Thread URL</label>
+                    <input type="url" class="form-control" id="threadUrl" 
+                           placeholder="https://twitter.com/user/status/123456789">
+                    <div class="form-text">Paste the URL of the first tweet in the thread</div>
+                </div>
+                <button class="btn btn-primary" id="convertBtn">Convert Thread</button>
+            </div>
+        </div>
+
+        <div id="loadingIndicator" class="text-center my-4 d-none">
+            <img src="{{ url_for('static', filename='images/loading.svg') }}" alt="Loading..." width="50">
+            <p class="mt-2">Converting thread...</p>
+        </div>
+
+        <div id="errorAlert" class="alert alert-danger mt-4 d-none" role="alert"></div>
+
+        <div id="resultCard" class="card mt-4 d-none">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="card-title mb-0">Converted Thread</h5>
+                    <button class="btn btn-secondary btn-sm" id="copyBtn">
+                        Copy Text
+                    </button>
+                </div>
+                <div id="threadText" class="thread-text"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
