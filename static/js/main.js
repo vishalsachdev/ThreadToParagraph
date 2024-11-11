@@ -1,6 +1,7 @@
 document.addEventListener('DOMContentLoaded', function() {
     const convertBtn = document.getElementById('convertBtn');
     const threadUrl = document.getElementById('threadUrl');
+    const authorOnly = document.getElementById('authorOnly');
     const loadingIndicator = document.getElementById('loadingIndicator');
     const errorAlert = document.getElementById('errorAlert');
     const resultCard = document.getElementById('resultCard');
@@ -26,7 +27,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ url: url })
+                body: JSON.stringify({ 
+                    url: url,
+                    author_only: authorOnly.checked
+                })
             });
 
             const data = await response.json();

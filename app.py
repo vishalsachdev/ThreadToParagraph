@@ -31,26 +31,31 @@ def index():
 def process_thread():
     try:
         url = request.json.get('url')
+        author_only = request.json.get('author_only', False)
+        
         if not url:
             return jsonify({'error': 'No URL provided'}), 400
 
-        # Check cache first
-        cached_thread = models.Thread.query.filter_by(url=url).first()
-        if cached_thread:
-            return jsonify({
-                'text': cached_thread.processed_text,
-                'cached': True
-            })
+        # For author_only requests, we don't use cache as the content differs
+        if not author_only:
+            # Check cache first
+            cached_thread = models.Thread.query.filter_by(url=url).first()
+            if cached_thread:
+                return jsonify({
+                    'text': cached_thread.processed_text,
+                    'cached': True
+                })
 
         # Fetch and process thread
-        thread_text = twitter_utils.fetch_thread(url)
+        thread_text = twitter_utils.fetch_thread(url, author_only=author_only)
         if not thread_text:
             return jsonify({'error': 'Failed to fetch thread'}), 400
 
-        # Save to cache
-        new_thread = models.Thread(url=url, processed_text=thread_text)
-        db.session.add(new_thread)
-        db.session.commit()
+        # Save to cache only if it's not author_only
+        if not author_only:
+            new_thread = models.Thread(url=url, processed_text=thread_text)
+            db.session.add(new_thread)
+            db.session.commit()
 
         return jsonify({
             'text': thread_text,

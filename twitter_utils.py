@@ -35,13 +35,13 @@ def extract_tweet_id(url):
             return part
     raise ValueError("Could not find tweet ID in URL")
 
-def fetch_thread(url):
+def fetch_thread(url, author_only=False):
     """Fetch and process thread from Twitter API"""
     try:
         bearer_token = get_bearer_token()
         tweet_id = extract_tweet_id(url)
         
-        # First, get the conversation ID from the initial tweet
+        # First, get the conversation ID and author ID from the initial tweet
         api_url = f"https://api.twitter.com/2/tweets/{tweet_id}"
         headers = {'Authorization': f'Bearer {bearer_token}'}
         params = {
@@ -57,11 +57,16 @@ def fetch_thread(url):
             
         tweet_data = response.json()
         conversation_id = tweet_data['data'].get('conversation_id')
+        original_author_id = tweet_data['data'].get('author_id')
         
         # Now fetch the entire conversation
         search_url = "https://api.twitter.com/2/tweets/search/recent"
+        query = f'conversation_id:{conversation_id}'
+        if author_only:
+            query += f' from:{original_author_id}'
+            
         search_params = {
-            'query': f'conversation_id:{conversation_id}',
+            'query': query,
             'tweet.fields': 'conversation_id,author_id,created_at,in_reply_to_user_id',
             'max_results': 100,
             'expansions': 'referenced_tweets.id'
@@ -77,12 +82,19 @@ def fetch_thread(url):
         if not tweets:
             return tweet_data['data']['text']  # Return single tweet if no thread found
             
+        # Add the original tweet to the beginning if not included
+        tweets = [tweet_data['data']] + [t for t in tweets if t['id'] != tweet_id]
+            
         # Sort tweets by created_at
         tweets.sort(key=lambda x: x['created_at'])
         
         # Combine tweets into readable text
         thread_text = ""
         for tweet in tweets:
+            # Skip tweets from other authors if author_only is True
+            if author_only and tweet['author_id'] != original_author_id:
+                continue
+                
             text = tweet['text']
             # Clean up text (remove URLs, mentions, etc)
             text = re.sub(r'https://\S+', '', text)
