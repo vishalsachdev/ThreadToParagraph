@@ -35,66 +35,81 @@ def extract_tweet_id(url):
             return part
     raise ValueError("Could not find tweet ID in URL")
 
+def validate_tweet_data(data, required_fields):
+    """Validate tweet data contains required fields"""
+    missing_fields = [field for field in required_fields if not data.get(field)]
+    if missing_fields:
+        raise ValueError(f"Missing required fields in tweet data: {', '.join(missing_fields)}")
+    return True
+
+def handle_api_error(response):
+    """Handle Twitter API error responses"""
+    error_data = response.json()
+    if 'errors' in error_data:
+        error = error_data['errors'][0]
+        error_code = error.get('code', 'unknown')
+        error_msg = error.get('message', 'Unknown error')
+        raise Exception(f"Twitter API error {error_code}: {error_msg}")
+    else:
+        raise Exception("Unknown Twitter API error")
+
 def fetch_thread(url, author_only=False):
     """Fetch and process thread from Twitter API"""
     try:
         bearer_token = get_bearer_token()
         tweet_id = extract_tweet_id(url)
         
-        # First, get the conversation ID and author ID from the initial tweet
+        # First, get the initial tweet details
         api_url = f"https://api.twitter.com/2/tweets/{tweet_id}"
         headers = {'Authorization': f'Bearer {bearer_token}'}
         params = {
             'tweet.fields': 'conversation_id,author_id,created_at,in_reply_to_user_id',
-            'expansions': 'referenced_tweets.id'
+            'expansions': 'referenced_tweets.id,author_id'
         }
         
         response = requests.get(api_url, headers=headers, params=params)
         if response.status_code != 200:
-            error_data = response.json()
-            error_msg = error_data.get('errors', [{'message': 'Unknown error'}])[0].get('message')
-            raise Exception(f"Twitter API error: {error_msg}")
+            handle_api_error(response)
             
         tweet_data = response.json()
-        conversation_id = tweet_data['data'].get('conversation_id')
-        original_author_id = tweet_data['data'].get('author_id')
         
-        # Now fetch the entire conversation
-        search_url = "https://api.twitter.com/2/tweets/search/recent"
-        query = f'conversation_id:{conversation_id}'
-        if author_only:
-            query += f' from:{original_author_id}'
-            
-        search_params = {
-            'query': query,
+        # Validate required fields
+        validate_tweet_data(tweet_data['data'], ['conversation_id', 'author_id'])
+        conversation_id = tweet_data['data']['conversation_id']
+        original_author_id = tweet_data['data']['author_id']
+        
+        # Fetch quote tweets and replies
+        quotes_url = f"https://api.twitter.com/2/tweets/{tweet_id}/quote_tweets"
+        quotes_params = {
             'tweet.fields': 'conversation_id,author_id,created_at,in_reply_to_user_id',
-            'max_results': 100,
-            'expansions': 'referenced_tweets.id'
+            'expansions': 'referenced_tweets.id,author_id',
+            'max_results': 100
         }
         
-        response = requests.get(search_url, headers=headers, params=search_params)
+        response = requests.get(quotes_url, headers=headers, params=quotes_params)
         if response.status_code != 200:
-            error_data = response.json()
-            error_msg = error_data.get('errors', [{'message': 'Unknown error'}])[0].get('message')
-            raise Exception(f"Twitter API error: {error_msg}")
+            handle_api_error(response)
             
-        tweets = response.json().get('data', [])
-        if not tweets:
+        quotes_data = response.json()
+        all_tweets = [tweet_data['data']]  # Start with original tweet
+        
+        if 'data' in quotes_data:
+            thread_tweets = quotes_data['data']
+            # Filter quotes by conversation_id and author_id if needed
+            for tweet in thread_tweets:
+                if tweet['conversation_id'] == conversation_id:
+                    if not author_only or tweet['author_id'] == original_author_id:
+                        all_tweets.append(tweet)
+        
+        if not all_tweets:
             return tweet_data['data']['text']  # Return single tweet if no thread found
             
-        # Add the original tweet to the beginning if not included
-        tweets = [tweet_data['data']] + [t for t in tweets if t['id'] != tweet_id]
-            
         # Sort tweets by created_at
-        tweets.sort(key=lambda x: x['created_at'])
+        all_tweets.sort(key=lambda x: x['created_at'])
         
         # Combine tweets into readable text
         thread_text = ""
-        for tweet in tweets:
-            # Skip tweets from other authors if author_only is True
-            if author_only and tweet['author_id'] != original_author_id:
-                continue
-                
+        for tweet in all_tweets:
             text = tweet['text']
             # Clean up text (remove URLs, mentions, etc)
             text = re.sub(r'https://\S+', '', text)
@@ -107,6 +122,8 @@ def fetch_thread(url, author_only=False):
     except requests.exceptions.RequestException as e:
         raise Exception(f"Network error: {str(e)}")
     except KeyError as e:
-        raise Exception(f"Unexpected API response format: {str(e)}")
+        raise Exception(f"Unexpected API response format: Missing field {str(e)}")
+    except ValueError as e:
+        raise Exception(str(e))
     except Exception as e:
         raise Exception(f"Error processing thread: {str(e)}")
